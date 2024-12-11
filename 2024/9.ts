@@ -74,7 +74,6 @@ function part2(arr: (number | null)[]) {
     }
 
     const file = grouped[toMoveIndex];
-    console.log(file[0]);
     const emptySpaceIndex = grouped.findIndex(group => {
       if((group?.[0] ?? null) !== null) {
         return false;
@@ -138,4 +137,4 @@ function main(input: string) {
 import * as fs from "node:fs";
 
 const data = fs.readFileSync("./inputs/9.txt", "utf8");
-main(data);
+console.log(main(data));
