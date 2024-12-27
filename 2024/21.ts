@@ -1,3 +1,5 @@
+import {memoize} from "lodash";
+
 function parseInput(input: string) {
   return input.split("\n").map(line => {
     const keys = line.split("");
@@ -35,239 +37,91 @@ function findInMatrix(matrix: string[][], target: string): { x: number, y: numbe
   return null;
 }
 
+function path(matrix, a, b)  {
+  let ap = findInMatrix(matrix, a);
+  let bp = findInMatrix(matrix, b);
+  let obstacle = findInMatrix(matrix, "#");
 
-function codeToRobot(keypadMatrix, sequence) {
-  let position = findInMatrix(keypadMatrix, "A");
-  let obstacle = findInMatrix(keypadMatrix, "#");
-  const result: string[] = [];
-
-  for (const key of sequence) {
-    const newPosition = findInMatrix(keypadMatrix, key);
-    const dy = newPosition.y - position.y;
-    const dx = newPosition.x - position.x
-
-    const ymove = Array.from({length: Math.abs(dy)}).fill(dy > 0 ? "v" : "^");
-    const xmove = Array.from({length: Math.abs(dx)}).fill(dx > 0 ? ">" : "<");
-
-    let subsequence;
-    if (newPosition.x === obstacle.x) {
-      //first do y
-      subsequence = [...ymove, ...xmove];
-    } else {
-      subsequence = [...xmove, ...ymove];
-    }
-    position = newPosition;
-
-    result.push(...subsequence, "A");
-  }
-
-  return result;
-}
-
-function permute(permutation) {
-  var length = permutation.length,
-    result = [permutation.slice()],
-    c = new Array(length).fill(0),
-    i = 1, k, p;
-
-  while (i < length) {
-    if (c[i] < i) {
-      k = i % 2 && c[i];
-      p = permutation[i];
-      permutation[i] = permutation[k];
-      permutation[k] = p;
-      ++c[i];
-      i = 1;
-      result.push(permutation.slice());
-    } else {
-      c[i] = 0;
-      ++i;
-    }
-  }
-  return result;
-}
-
-
-function codeToRobotAll(keypadMatrix, sequence, index: number, position = findInMatrix(keypadMatrix, "A")) {
-  const key = sequence[index];
-  if(key === undefined) {
-    return [];
-  }
-
-  if(key === "#") {
-    return false;
-  }
-
-  const newPosition = findInMatrix(keypadMatrix, key);
-  const dy = newPosition.y - position.y;
-  const dx = newPosition.x - position.x
+  const dy = bp.y - ap.y;
+  const dx = bp.x - ap.x
 
   const ymove = Array.from({length: Math.abs(dy)}).fill(dy > 0 ? "v" : "^");
   const xmove = Array.from({length: Math.abs(dx)}).fill(dx > 0 ? ">" : "<");
 
-  const alreadySeen = new Set();
-  const permutations = permute([...xmove, ...ymove]).filter(v => {
-    if(alreadySeen.has(v.join(""))) {
-      return false;
+  let paths;
+  //take only L-shaped paths
+  if(Math.abs(dx) > 0 && Math.abs(dy) > 0) {
+    if(bp.x === obstacle.x && ap.y === obstacle.y) {
+      // only go y
+      paths = [
+        [...ymove, ...xmove, "A"]
+      ];
+    } else if (bp.y === obstacle.y && ap.x === obstacle.x) {
+      paths = [
+        [...xmove, ...ymove, "A"]
+      ];
+    } else {
+      paths = [
+        [...ymove, ...xmove, "A"],
+        [...xmove, ...ymove, "A"],
+      ]
     }
+  } else {
+    paths = [[...xmove, ...ymove, "A"]];
+  }
 
-    alreadySeen.add(v.join(""));
-    return true;
-  });
 
-
-  const results = permutations.flatMap(p => {
-    const res = [...p, "A"];
-    const restPermutations = codeToRobotAll(keypadMatrix, sequence, index+1, newPosition);
-    if(restPermutations === false) {
-      return [];
-    }
-
-    if(restPermutations.length > 0) {
-      return restPermutations.map(v => [...res, ...v]);
-    }
-
-    return [res];
-  });
-
-  return results;
+  return paths;
 }
 
-const cacheGlobal = new Map<any, Map<string, string[]>>();
-cacheGlobal.set(robotKeypad, new Map());
-cacheGlobal.set(keypad, new Map());
+const memoPaths = memoize(path, (...args) => [args[0].length, args[1], args[2]].join("_"))
 
-function codeToRobotRecursive(keypadMatrix, sequence, index: number, position = findInMatrix(keypadMatrix, "A")) {
-  const cacheKey = sequence.join("")+`:${index}:${position.x}${position.y}`;
-  const cache = cacheGlobal.get(keypadMatrix);
+const caches = new Map<any, Map<string, number>>();
+caches.set(keypad, new Map());
+caches.set(robotKeypad, new Map());
+
+function countInDepth(matrix: string[][], depth: number, code: string[]): number {
+  if(depth === 0) {
+    return code.length;
+  }
+
+  const cache = caches.get(matrix);
+  const cacheKey = [depth, code.join(",")].join("_");
   if(cache.has(cacheKey)) {
     return cache.get(cacheKey);
   }
 
-  const key = sequence[index];
-  if(key === undefined) {
-    return [];
+  let total = 0;
+  let prev = "A";
+  for (const current of code) {
+    const allPaths = memoPaths(matrix, prev, current);
+    const costs = allPaths.map(path => countInDepth(robotKeypad, depth -1, path));
+    total += Math.min(...costs);
+    prev = current;
   }
 
-  const currentKey = keypadMatrix[position.y][position.x];
-  if(currentKey === "#") {
-    return null;
-  }
-
-  const newPosition = findInMatrix(keypadMatrix, key);
-  let result;
-  if(newPosition.y === position.y && newPosition.x === position.x) {
-    index++;
-    const sub = codeToRobotRecursive(keypadMatrix, sequence, index, position);
-    if(sub) {
-      result = sub.length > 0 ? sub.map(v => ["A", ...v]): ["A"];
-    } else {
-      result = null;
-    }
-  } else {
-    const dy = newPosition.y - position.y;
-    const dx = newPosition.x - position.x
-    result = [];
-
-    const ymove = dy > 0 ? "v" : "^";
-    const xmove = dx > 0 ? ">" : "<";
-
-    let sub = [];
-    if(Math.abs(dx) > 0) {
-      sub = codeToRobotRecursive(keypadMatrix, sequence, index, {
-        x: position.x + Math.sign(dx),
-        y: position.y
-      });
-      if(sub) {
-        result = [
-          ...result,
-          ...sub.length > 0 ? sub.map(v => [xmove, ...v]): [xmove],
-        ]
-      }
-    }
-
-    if(Math.abs(dy) > 0) {
-      sub = codeToRobotRecursive(keypadMatrix, sequence, index, {
-        x: position.x,
-        y: position.y + Math.sign(dy)
-      });
-      if(sub) {
-        result = [
-          ...result,
-          ...sub.length > 0 ? sub.map(v => [ymove, ...v]) : [ymove],
-        ]
-      }
-    }
-  }
-
-  cache.set(cacheKey, result);
-  return result;
+  cache.set(cacheKey, total);
+  return total;
 }
 
-function reverseRobotSequence(matrix, sequence) {
-
-  let currentPosition = findInMatrix(matrix, "A");
-  let output = [];
-
-  for (let sign of sequence) {
-    if (sign === ">") {
-      currentPosition.x++;
-    } else if (sign === "<") {
-      currentPosition.x--;
-    } else if (sign === "^") {
-      currentPosition.y--;
-    } else if (sign === "v") {
-      currentPosition.y++;
-    } else if (sign === "A") {
-      output.push(matrix[currentPosition.y][currentPosition.x]);
-    }
-  }
-
-  return output;
-}
-
-function combinePartials(arr: Array<string[]>) {
-
-  const [
-    first,
-    ...rest
-  ] = arr;
-
-  if(first === undefined) {
-    return null;
-  }
-
-  return first.flatMap(v => {
-    const res = combinePartials(rest);
-    if(res) {
-      return res.map(p => [v, ...p])
-    }
-    else {
-      return [[v]];
-    }
-  })
-}
 
 function main(input: string) {
   const inputs = parseInput(input);
 
-  let score = 0;
+  let part1 = 0;
   for(const { keys, number } of inputs) {
-    const p = codeToRobotRecursive(keypad, keys, 0).flatMap(a1 => {
-      return codeToRobotRecursive(robotKeypad, a1, 0)
-        .flatMap(a2 => {
-          return [codeToRobot(robotKeypad, a2, 0)];
-        })
-    })
-
-    const shortest = p.sort((a, b) => a.length - b.length)[0];
-    console.log(number, shortest.length);
-    score += number * shortest.length;
+    const total = countInDepth(keypad, 3, keys);
+    part1 += number * total;
   }
 
-  return score;
-}
+  let part2 = 0;
+  for(const { keys, number } of inputs) {
+    const total = countInDepth(keypad, 26, keys);
+    part2 += number * total;
+  }
 
+  return { part1, part2 };
+}
 
 import * as fs from "node:fs";
 
