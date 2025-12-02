@@ -32,3 +32,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Input files
+
+input.txt
